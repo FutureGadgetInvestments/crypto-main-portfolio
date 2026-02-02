@@ -1,9 +1,23 @@
 /**
- * Portfolio JavaScript - IRR Calculation and Interactivity
+ * Portfolio JavaScript - Fetches data from Google Sheets and calculates IRR
  */
 
 (function() {
   'use strict';
+
+  // Google Sheets TSV URLs
+  const SHEETS = {
+    transactions: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQdW4--3KMPl6vSJGFY4BdzNxJgbZFMPnfGYSqS7AEox19YzmYQGo5wvKHupYOS1vTO2J6F6oksqzry/pub?gid=0&single=true&output=tsv',
+    holdings: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQdW4--3KMPl6vSJGFY4BdzNxJgbZFMPnfGYSqS7AEox19YzmYQGo5wvKHupYOS1vTO2J6F6oksqzry/pub?gid=1563230874&single=true&output=tsv',
+    sales: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQdW4--3KMPl6vSJGFY4BdzNxJgbZFMPnfGYSqS7AEox19YzmYQGo5wvKHupYOS1vTO2J6F6oksqzry/pub?gid=845485488&single=true&output=tsv'
+  };
+
+  // Cache for fetched data
+  let DATA = {
+    holdings: [],
+    transactions: [],
+    sales: []
+  };
 
   // Mobile navigation toggle
   const mobileNavToggle = document.querySelector('.mobile-nav-toggle');
@@ -16,25 +30,80 @@
   }
 
   /**
+   * Fetch and parse TSV from Google Sheets
+   */
+  async function fetchTSV(url) {
+    try {
+      const response = await fetch(url);
+      const text = await response.text();
+      return parseTSV(text);
+    } catch (e) {
+      console.error('Error fetching TSV:', e);
+      return [];
+    }
+  }
+
+  /**
+   * Parse TSV string into array of objects
+   */
+  function parseTSV(tsv) {
+    const lines = tsv.trim().split('\n');
+    if (lines.length < 2) return [];
+
+    // First line is headers
+    const headers = lines[0].split('\t').map(h => h.trim().toLowerCase().replace(/ /g, '_'));
+
+    // Parse data rows
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split('\t');
+      const row = {};
+      headers.forEach((header, index) => {
+        let value = values[index] ? values[index].trim() : '';
+
+        // Clean up currency values (remove $ and commas)
+        if (value.startsWith('$') || value.startsWith('-$')) {
+          value = value.replace(/[$,]/g, '');
+        }
+
+        row[header] = value;
+      });
+      data.push(row);
+    }
+    return data;
+  }
+
+  /**
+   * Fetch all data from Google Sheets
+   */
+  async function fetchAllData() {
+    const [holdings, transactions, sales] = await Promise.all([
+      fetchTSV(SHEETS.holdings),
+      fetchTSV(SHEETS.transactions),
+      fetchTSV(SHEETS.sales)
+    ]);
+
+    DATA.holdings = holdings;
+    DATA.transactions = transactions;
+    DATA.sales = sales;
+
+    return DATA;
+  }
+
+  /**
    * Calculate IRR using Newton-Raphson method
-   * @param {Array} cashFlows - Array of {date: Date, amount: number}
-   * @param {number} guess - Initial guess (default 0.1 = 10%)
-   * @returns {number|null} - IRR as decimal or null if not converged
    */
   function calculateIRR(cashFlows, guess = 0.1) {
     if (!cashFlows || cashFlows.length < 2) return null;
 
-    // Sort by date
     const sorted = [...cashFlows].sort((a, b) => a.date - b.date);
     const firstDate = sorted[0].date;
 
-    // Convert dates to years from first date
     const flows = sorted.map(cf => ({
       years: (cf.date - firstDate) / (365.25 * 24 * 60 * 60 * 1000),
       amount: cf.amount
     }));
 
-    // Newton-Raphson iteration
     let rate = guess;
     const maxIterations = 100;
     const tolerance = 1e-7;
@@ -50,7 +119,6 @@
       }
 
       if (Math.abs(derivative) < 1e-10) {
-        // Derivative too small, try different approach
         rate += 0.01;
         continue;
       }
@@ -63,12 +131,10 @@
 
       rate = newRate;
 
-      // Bound the rate to reasonable values
       if (rate < -0.99) rate = -0.99;
       if (rate > 10) rate = 10;
     }
 
-    // Try bisection method if Newton-Raphson failed
     return bisectionIRR(flows);
   }
 
@@ -141,39 +207,44 @@
       return new Date(parts[2], parts[0] - 1, parts[1]);
     }
 
+    // Check for M-D-YYYY format (e.g., 2-2-2026)
+    if (dateStr.includes('-') && dateStr.split('-')[0].length <= 2) {
+      const parts = dateStr.split('-');
+      return new Date(parts[2], parts[0] - 1, parts[1]);
+    }
+
     // Otherwise assume YYYY-MM-DD format
     const parts = dateStr.split('-');
     return new Date(parts[0], parts[1] - 1, parts[2]);
   }
 
   /**
-   * Initialize IRR calculation on performance page
+   * Initialize IRR calculation
    */
   function initIRR() {
     const irrElement = document.getElementById('portfolio-irr');
-    const transactionsData = document.getElementById('transactions-data');
-
-    if (!irrElement || !transactionsData) return;
+    if (!irrElement) return;
 
     try {
-      const transactions = JSON.parse(transactionsData.textContent);
-      const holdingsData = document.getElementById('holdings-data');
-      const holdings = holdingsData ? JSON.parse(holdingsData.textContent) : [];
-
-      // Build cash flows array
       const cashFlows = [];
 
       // Add all transactions
-      transactions.forEach(t => {
-        cashFlows.push({
-          date: parseDate(t.date),
-          amount: parseFloat(t.amount)
-        });
+      DATA.transactions.forEach(t => {
+        const amount = parseFloat(t.amount);
+        if (!isNaN(amount)) {
+          cashFlows.push({
+            date: parseDate(t.date),
+            amount: amount
+          });
+        }
       });
 
       // Add current values as terminal cash flow (today)
       const today = new Date();
-      const totalCurrentValue = holdings.reduce((sum, h) => sum + parseFloat(h.current_value), 0);
+      const totalCurrentValue = DATA.holdings.reduce((sum, h) => {
+        const val = parseFloat(h.current_value);
+        return sum + (isNaN(val) ? 0 : val);
+      }, 0);
 
       if (totalCurrentValue > 0) {
         cashFlows.push({
@@ -182,7 +253,6 @@
         });
       }
 
-      // Calculate IRR
       const irr = calculateIRR(cashFlows);
 
       if (irr !== null && isFinite(irr)) {
@@ -212,14 +282,12 @@
     let currentFilter = 'all';
     let currentSort = { column: null, direction: 'asc' };
 
-    // Search functionality
     if (searchInput) {
       searchInput.addEventListener('input', function() {
         filterRows();
       });
     }
 
-    // Category filter buttons
     filterButtons.forEach(btn => {
       btn.addEventListener('click', function() {
         filterButtons.forEach(b => b.classList.remove('active'));
@@ -229,13 +297,11 @@
       });
     });
 
-    // Sort functionality
     const headers = table.querySelectorAll('th[data-sort]');
     headers.forEach(header => {
       header.addEventListener('click', function() {
         const column = this.dataset.sort;
 
-        // Toggle direction if same column
         if (currentSort.column === column) {
           currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
         } else {
@@ -243,7 +309,6 @@
           currentSort.direction = 'asc';
         }
 
-        // Update header classes
         headers.forEach(h => h.classList.remove('sorted-asc', 'sorted-desc'));
         this.classList.add('sorted-' + currentSort.direction);
 
@@ -275,7 +340,6 @@
         let aVal = a.dataset[currentSort.column] || '';
         let bVal = b.dataset[currentSort.column] || '';
 
-        // Try to parse as numbers
         const aNum = parseFloat(aVal);
         const bNum = parseFloat(bVal);
 
@@ -283,7 +347,6 @@
           return currentSort.direction === 'asc' ? aNum - bNum : bNum - aNum;
         }
 
-        // String comparison
         return currentSort.direction === 'asc'
           ? aVal.localeCompare(bVal)
           : bVal.localeCompare(aVal);
@@ -294,37 +357,32 @@
   }
 
   /**
-   * Initialize category breakdown chart (simple bar representation)
+   * Initialize category breakdown chart
    */
   function initCategoryBreakdown() {
     const container = document.getElementById('category-breakdown');
-    const holdingsData = document.getElementById('holdings-data');
-
-    if (!container || !holdingsData) return;
+    if (!container) return;
 
     try {
-      const holdings = JSON.parse(holdingsData.textContent);
-
-      // Group by category
       const categories = {};
-      holdings.forEach(h => {
+      DATA.holdings.forEach(h => {
         const cat = h.category;
         if (!categories[cat]) {
           categories[cat] = { value: 0, cost: 0 };
         }
-        categories[cat].value += parseFloat(h.current_value);
-        categories[cat].cost += parseFloat(h.cost_basis);
+        const val = parseFloat(h.current_value) || 0;
+        const cost = parseFloat(h.cost_basis) || 0;
+        categories[cat].value += val;
+        categories[cat].cost += cost;
       });
 
-      // Calculate total
       const totalValue = Object.values(categories).reduce((sum, c) => sum + c.value, 0);
 
-      // Build HTML
       let html = '<ul class="category-list">';
       Object.entries(categories)
         .sort((a, b) => b[1].value - a[1].value)
         .forEach(([name, data]) => {
-          const percentage = (data.value / totalValue * 100).toFixed(1);
+          const percentage = totalValue > 0 ? (data.value / totalValue * 100).toFixed(1) : 0;
           const gainLoss = data.value - data.cost;
           const gainLossClass = gainLoss >= 0 ? 'positive' : 'negative';
 
@@ -362,26 +420,20 @@
   function initTopMovers() {
     const gainersContainer = document.getElementById('top-gainers');
     const losersContainer = document.getElementById('top-losers');
-    const holdingsData = document.getElementById('holdings-data');
 
-    if ((!gainersContainer && !losersContainer) || !holdingsData) return;
+    if (!gainersContainer && !losersContainer) return;
 
     try {
-      const holdings = JSON.parse(holdingsData.textContent);
-
-      // Calculate gain/loss percentage for each
-      const withGains = holdings.map(h => {
-        const cost = parseFloat(h.cost_basis);
-        const value = parseFloat(h.current_value);
+      const withGains = DATA.holdings.map(h => {
+        const cost = parseFloat(h.cost_basis) || 0;
+        const value = parseFloat(h.current_value) || 0;
         const gainLoss = value - cost;
         const gainLossPct = cost > 0 ? (gainLoss / cost) : 0;
         return { ...h, gainLoss, gainLossPct };
       });
 
-      // Sort by percentage
       const sorted = [...withGains].sort((a, b) => b.gainLossPct - a.gainLossPct);
 
-      // Top gainers (top 3)
       if (gainersContainer) {
         const gainers = sorted.slice(0, 3);
         gainersContainer.innerHTML = gainers.map(h => `
@@ -396,7 +448,6 @@
         gainersContainer.classList.remove('loading');
       }
 
-      // Top losers (bottom 3, reversed)
       if (losersContainer) {
         const losers = sorted.slice(-3).reverse();
         losersContainer.innerHTML = losers.map(h => {
@@ -426,31 +477,25 @@
    */
   function initTransactionTimeline() {
     const container = document.getElementById('transaction-timeline');
-    const transactionsData = document.getElementById('transactions-data');
-
-    if (!container || !transactionsData) return;
+    if (!container) return;
 
     try {
-      const transactions = JSON.parse(transactionsData.textContent);
-
-      // Sort by date descending (most recent first)
-      const sorted = [...transactions].sort((a, b) => {
+      const sorted = [...DATA.transactions].sort((a, b) => {
         return parseDate(b.date) - parseDate(a.date);
       });
 
-      // Build HTML
       let html = '<div class="transactions-list">';
       sorted.slice(0, 20).forEach(t => {
-        const amount = parseFloat(t.amount);
+        const amount = parseFloat(t.amount) || 0;
         const amountClass = amount >= 0 ? 'positive' : 'negative';
-        const typeClass = t.type.toLowerCase();
+        const typeClass = (t.type || '').toLowerCase();
 
         html += `
           <div class="transaction-item">
             <div class="transaction-info">
-              <span class="transaction-type ${typeClass}">${t.type}</span>
+              <span class="transaction-type ${typeClass}">${t.type || ''}</span>
               <span class="transaction-desc">${t.notes || ''}</span>
-              <span class="transaction-date">${t.date}</span>
+              <span class="transaction-date">${t.date || ''}</span>
             </div>
             <span class="transaction-amount ${amountClass}">
               ${amount >= 0 ? '+' : ''}${formatCurrency(amount)}
@@ -472,20 +517,13 @@
    * Calculate and display portfolio summary stats
    */
   function initSummaryStats() {
-    const holdingsData = document.getElementById('holdings-data');
-    if (!holdingsData) return;
-
     try {
-      const holdings = JSON.parse(holdingsData.textContent);
-      const salesData = document.getElementById('sales-data');
-      const sales = salesData ? JSON.parse(salesData.textContent) : [];
-
       let totalCost = 0;
       let totalValue = 0;
 
-      holdings.forEach(h => {
-        totalCost += parseFloat(h.cost_basis);
-        totalValue += parseFloat(h.current_value);
+      DATA.holdings.forEach(h => {
+        totalCost += parseFloat(h.cost_basis) || 0;
+        totalValue += parseFloat(h.current_value) || 0;
       });
 
       const totalGainLoss = totalValue - totalCost;
@@ -493,22 +531,17 @@
 
       // Calculate realized gains from sales
       let totalRealizedGain = 0;
-      let totalSaleProceeds = 0;
-      let totalCostBasisSold = 0;
 
-      sales.forEach(s => {
+      DATA.sales.forEach(s => {
         const proceeds = parseFloat(s.sale_price) || 0;
         const costBasis = parseFloat(s.cost_basis) || 0;
-        totalSaleProceeds += proceeds;
-        totalCostBasisSold += costBasis;
         totalRealizedGain += proceeds - costBasis;
       });
 
-      // Update stat elements if they exist
+      // Update stat elements
       const costEl = document.getElementById('total-cost');
       const valueEl = document.getElementById('total-value');
       const gainEl = document.getElementById('total-gain');
-      const countEl = document.getElementById('holdings-count');
       const realizedEl = document.getElementById('realized-gain');
       const unrealizedEl = document.getElementById('unrealized-gain');
       const totalGainEl = document.getElementById('total-gain-all');
@@ -519,21 +552,17 @@
         gainEl.textContent = `${totalGainLoss >= 0 ? '+' : ''}${formatCurrency(totalGainLoss)} (${formatPercent(totalGainLossPct)})`;
         gainEl.classList.add(totalGainLoss >= 0 ? 'positive' : 'negative');
       }
-      if (countEl) countEl.textContent = holdings.length;
 
-      // Realized gains display
       if (realizedEl) {
         realizedEl.textContent = `${totalRealizedGain >= 0 ? '+' : ''}${formatCurrency(totalRealizedGain)}`;
         realizedEl.classList.add(totalRealizedGain >= 0 ? 'positive' : 'negative');
       }
 
-      // Unrealized gains display
       if (unrealizedEl) {
         unrealizedEl.textContent = `${totalGainLoss >= 0 ? '+' : ''}${formatCurrency(totalGainLoss)}`;
         unrealizedEl.classList.add(totalGainLoss >= 0 ? 'positive' : 'negative');
       }
 
-      // Total gains (realized + unrealized)
       const combinedGain = totalRealizedGain + totalGainLoss;
       if (totalGainEl) {
         totalGainEl.textContent = `${combinedGain >= 0 ? '+' : ''}${formatCurrency(combinedGain)}`;
@@ -550,21 +579,16 @@
    */
   function initRealizedGains() {
     const container = document.getElementById('realized-gains-list');
-    const salesData = document.getElementById('sales-data');
-
-    if (!container || !salesData) return;
+    if (!container) return;
 
     try {
-      const sales = JSON.parse(salesData.textContent);
-
-      if (sales.length === 0) {
+      if (DATA.sales.length === 0) {
         container.innerHTML = '<p class="no-data">No sales recorded yet.</p>';
         container.classList.remove('loading');
         return;
       }
 
-      // Sort by date descending
-      const sorted = [...sales].sort((a, b) => parseDate(b.date) - parseDate(a.date));
+      const sorted = [...DATA.sales].sort((a, b) => parseDate(b.date) - parseDate(a.date));
 
       let html = '<div class="sales-list">';
       sorted.forEach(s => {
@@ -577,8 +601,8 @@
         html += `
           <div class="sale-item">
             <div class="sale-info">
-              <span class="sale-holding">${s.id}</span>
-              <span class="sale-date">${s.date}</span>
+              <span class="sale-holding">${s.id || ''}</span>
+              <span class="sale-date">${s.date || ''}</span>
               <span class="sale-notes">${s.notes || ''}</span>
             </div>
             <div class="sale-numbers">
@@ -608,8 +632,14 @@
     }
   }
 
-  // Initialize on DOM ready
-  document.addEventListener('DOMContentLoaded', function() {
+  /**
+   * Initialize everything after fetching data
+   */
+  async function init() {
+    // Fetch all data from Google Sheets
+    await fetchAllData();
+
+    // Initialize all components
     initSummaryStats();
     initIRR();
     initHoldingsTable();
@@ -617,6 +647,9 @@
     initTopMovers();
     initTransactionTimeline();
     initRealizedGains();
-  });
+  }
+
+  // Initialize on DOM ready
+  document.addEventListener('DOMContentLoaded', init);
 
 })();

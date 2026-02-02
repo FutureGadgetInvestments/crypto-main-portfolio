@@ -11,13 +11,9 @@ description: Complete list of portfolio holdings
 
 <div class="holdings-controls">
   <input type="text" id="holdings-search" class="search-input" placeholder="Search holdings...">
-
-  <div class="filter-buttons">
+  <div class="filter-buttons" id="filter-buttons">
     <button class="filter-btn active" data-category="all">All</button>
-    {% assign categories = site.data.holdings | map: "category" | uniq | sort %}
-    {% for category in categories %}
-    <button class="filter-btn" data-category="{{ category }}">{{ category }}</button>
-    {% endfor %}
+    <!-- Filter buttons will be added dynamically -->
   </div>
 </div>
 
@@ -36,88 +32,135 @@ description: Complete list of portfolio holdings
         <th data-sort="date">Date Acquired</th>
       </tr>
     </thead>
-    <tbody>
-      {% for holding in site.data.holdings %}
-      {% assign gain_loss = holding.current_value | minus: holding.cost_basis %}
-      {% assign gain_loss_pct = gain_loss | times: 100.0 | divided_by: holding.cost_basis %}
-      <tr data-category="{{ holding.category }}"
-          data-name="{{ holding.name }}"
-          data-network="{{ holding.network }}"
-          data-status="{{ holding.status }}"
-          data-cost="{{ holding.cost_basis }}"
-          data-value="{{ holding.current_value }}"
-          data-gain="{{ gain_loss }}"
-          data-gainpct="{{ gain_loss_pct }}"
-          data-date="{{ holding.date_acquired }}"
-          data-notes="{{ holding.notes }}">
-        <td class="name-cell">{{ holding.name }}</td>
-        <td><span class="category-badge">{{ holding.category }}</span></td>
-        <td><span class="network-badge">{{ holding.network }}</span></td>
-        <td><span class="status-badge status-{{ holding.status }}">{{ holding.status }}</span></td>
-        <td class="value-cell">${{ holding.cost_basis | round }}</td>
-        <td class="value-cell">${{ holding.current_value | round }}</td>
-        <td class="value-cell {% if gain_loss >= 0 %}positive{% else %}negative{% endif %}">
-          {% if gain_loss >= 0 %}+{% endif %}${{ gain_loss | round }}
-        </td>
-        <td class="value-cell {% if gain_loss_pct >= 0 %}positive{% else %}negative{% endif %}">
-          {% if gain_loss_pct >= 0 %}+{% endif %}{{ gain_loss_pct | round: 1 }}%
-        </td>
-        <td>{{ holding.date_acquired }}</td>
-      </tr>
-      {% endfor %}
+    <tbody id="holdings-table-body">
+      <tr><td colspan="9" class="loading">Loading...</td></tr>
     </tbody>
   </table>
 </div>
 
 <!-- Summary -->
 <div class="stats-grid" style="margin-top: 2rem;">
-  {% assign total_cost = 0 %}
-  {% assign total_value = 0 %}
-  {% for holding in site.data.holdings %}
-    {% assign total_cost = total_cost | plus: holding.cost_basis %}
-    {% assign total_value = total_value | plus: holding.current_value %}
-  {% endfor %}
-  {% assign total_gain = total_value | minus: total_cost %}
-  {% assign total_gain_pct = total_gain | times: 100.0 | divided_by: total_cost %}
-
   <div class="stat-card">
     <span class="stat-label">Total Holdings</span>
-    <span class="stat-value">{{ site.data.holdings | size }}</span>
+    <span class="stat-value" id="holdings-count">-</span>
   </div>
 
   <div class="stat-card">
     <span class="stat-label">Total Cost</span>
-    <span class="stat-value">${{ total_cost | round }}</span>
+    <span class="stat-value" id="total-cost">-</span>
   </div>
 
   <div class="stat-card">
     <span class="stat-label">Total Value</span>
-    <span class="stat-value">${{ total_value | round }}</span>
+    <span class="stat-value" id="total-value">-</span>
   </div>
 
   <div class="stat-card">
     <span class="stat-label">Total Gain/Loss</span>
-    <span class="stat-value {% if total_gain >= 0 %}positive{% else %}negative{% endif %}">
-      {% if total_gain >= 0 %}+{% endif %}${{ total_gain | round }}
-      <small>({% if total_gain_pct >= 0 %}+{% endif %}{{ total_gain_pct | round: 1 }}%)</small>
-    </span>
+    <span class="stat-value" id="total-gain">-</span>
   </div>
 </div>
 
-<!-- Data for JavaScript -->
-<script type="application/json" id="holdings-data">
-[{% for holding in site.data.holdings %}
-  {
-    "id": "{{ holding.id }}",
-    "name": "{{ holding.name }}",
-    "category": "{{ holding.category }}",
-    "network": "{{ holding.network }}",
-    "status": "{{ holding.status }}",
-    "date_acquired": "{{ holding.date_acquired }}",
-    "cost_basis": {{ holding.cost_basis }},
-    "current_value": {{ holding.current_value }},
-    "last_checked_date": "{{ holding.last_checked_date }}",
-    "notes": "{{ holding.notes | escape }}"
-  }{% unless forloop.last %},{% endunless %}
-{% endfor %}]
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+  const HOLDINGS_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQdW4--3KMPl6vSJGFY4BdzNxJgbZFMPnfGYSqS7AEox19YzmYQGo5wvKHupYOS1vTO2J6F6oksqzry/pub?gid=1563230874&single=true&output=tsv';
+
+  function parseTSV(tsv) {
+    const lines = tsv.trim().split('\n');
+    if (lines.length < 2) return [];
+    const headers = lines[0].split('\t').map(h => h.trim().toLowerCase().replace(/ /g, '_'));
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split('\t');
+      const row = {};
+      headers.forEach((header, index) => {
+        let value = values[index] ? values[index].trim() : '';
+        if (value.startsWith('$') || value.startsWith('-$')) {
+          value = value.replace(/[$,]/g, '');
+        }
+        row[header] = value;
+      });
+      data.push(row);
+    }
+    return data;
+  }
+
+  function formatCurrency(value) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency', currency: 'USD',
+      minimumFractionDigits: 0, maximumFractionDigits: 0
+    }).format(value);
+  }
+
+  try {
+    const response = await fetch(HOLDINGS_URL);
+    const text = await response.text();
+    const holdings = parseTSV(text);
+
+    // Build filter buttons
+    const categories = [...new Set(holdings.map(h => h.category))].sort();
+    const filterContainer = document.getElementById('filter-buttons');
+    categories.forEach(cat => {
+      const btn = document.createElement('button');
+      btn.className = 'filter-btn';
+      btn.dataset.category = cat;
+      btn.textContent = cat;
+      filterContainer.appendChild(btn);
+    });
+
+    // Build table rows
+    const tbody = document.getElementById('holdings-table-body');
+    let totalCost = 0, totalValue = 0;
+
+    tbody.innerHTML = holdings.map(h => {
+      const cost = parseFloat(h.cost_basis) || 0;
+      const value = parseFloat(h.current_value) || 0;
+      const gain = value - cost;
+      const gainPct = cost > 0 ? (gain / cost * 100) : 0;
+      totalCost += cost;
+      totalValue += value;
+
+      return `
+        <tr data-category="${h.category}"
+            data-name="${h.name}"
+            data-network="${h.network}"
+            data-status="${h.status}"
+            data-cost="${cost}"
+            data-value="${value}"
+            data-gain="${gain}"
+            data-gainpct="${gainPct}"
+            data-date="${h.date_acquired}"
+            data-notes="${h.notes || ''}">
+          <td class="name-cell">${h.name}</td>
+          <td><span class="category-badge">${h.category}</span></td>
+          <td><span class="network-badge">${h.network}</span></td>
+          <td><span class="status-badge status-${h.status}">${h.status}</span></td>
+          <td class="value-cell">${formatCurrency(cost)}</td>
+          <td class="value-cell">${formatCurrency(value)}</td>
+          <td class="value-cell ${gain >= 0 ? 'positive' : 'negative'}">
+            ${gain >= 0 ? '+' : ''}${formatCurrency(gain)}
+          </td>
+          <td class="value-cell ${gainPct >= 0 ? 'positive' : 'negative'}">
+            ${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(1)}%
+          </td>
+          <td>${h.date_acquired}</td>
+        </tr>
+      `;
+    }).join('');
+
+    // Update summary stats
+    const totalGain = totalValue - totalCost;
+    const totalGainPct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
+    document.getElementById('holdings-count').textContent = holdings.length;
+    document.getElementById('total-cost').textContent = formatCurrency(totalCost);
+    document.getElementById('total-value').textContent = formatCurrency(totalValue);
+    const gainEl = document.getElementById('total-gain');
+    gainEl.innerHTML = `${totalGain >= 0 ? '+' : ''}${formatCurrency(totalGain)} <small>(${totalGain >= 0 ? '+' : ''}${totalGainPct.toFixed(1)}%)</small>`;
+    gainEl.classList.add(totalGain >= 0 ? 'positive' : 'negative');
+
+  } catch (e) {
+    console.error('Error loading holdings:', e);
+    document.getElementById('holdings-table-body').innerHTML = '<tr><td colspan="9">Error loading data</td></tr>';
+  }
+});
 </script>

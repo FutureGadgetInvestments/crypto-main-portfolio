@@ -50,39 +50,7 @@ description: Portfolio analytics and IRR calculation
 <div class="card" style="margin-top: 1.5rem;">
   <h2 class="card-title">Realized Gains History</h2>
   <div id="realized-gains-list" class="loading">Loading...</div>
-
-  {% if site.data.sales.size > 0 %}
-  <div class="table-container" style="box-shadow: none; margin-top: 1rem;">
-    <table class="holdings-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>ID</th>
-          <th>Cost Basis</th>
-          <th>Sale Price</th>
-          <th>Realized Gain</th>
-          <th>Notes</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% assign sorted_sales = site.data.sales | sort: "date" | reverse %}
-        {% for sale in sorted_sales %}
-        {% assign sale_gain = sale.sale_price | minus: sale.cost_basis | plus: 0 %}
-        <tr>
-          <td>{{ sale.date }}</td>
-          <td class="name-cell">{{ sale.id }}</td>
-          <td class="value-cell">${{ sale.cost_basis }}</td>
-          <td class="value-cell">${{ sale.sale_price }}</td>
-          <td class="value-cell {% if sale_gain >= 0 %}positive{% else %}negative{% endif %}">
-            {% if sale_gain >= 0 %}+{% endif %}${{ sale_gain }}
-          </td>
-          <td>{{ sale.notes }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endif %}
+  <div id="sales-table-container"></div>
 </div>
 
 <div class="card" style="margin-top: 1.5rem;">
@@ -115,121 +83,193 @@ description: Portfolio analytics and IRR calculation
 
 <div class="card" style="margin-top: 1.5rem;">
   <h2 class="card-title">All Transactions</h2>
-
-  <div class="table-container" style="box-shadow: none;">
-    <table class="holdings-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% assign sorted_transactions = site.data.transactions | sort: "date" | reverse %}
-        {% for tx in sorted_transactions %}
-        {% assign tx_amount = tx.amount | plus: 0 %}
-        <tr>
-          <td>{{ tx.date }}</td>
-          <td>
-            <span class="transaction-type {% if tx.type == 'Deposit' %}buy{% elsif tx.type == 'Withdrawal' or tx.type == 'DIVIDEND' %}sell{% else %}expense{% endif %}">
-              {{ tx.type }}
-            </span>
-          </td>
-          <td>{{ tx.notes }}</td>
-          <td class="value-cell {% if tx_amount >= 0 %}positive{% else %}negative{% endif %}">
-            {% if tx_amount >= 0 %}+{% endif %}${{ tx.amount }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div id="transactions-table-container">
+    <p class="loading">Loading...</p>
   </div>
 </div>
 
 <!-- Summary Stats -->
 <div class="stats-grid" style="margin-top: 2rem;">
-  {% assign total_invested = 0 %}
-  {% assign total_income = 0 %}
-  {% assign total_expenses = 0 %}
-  {% for tx in site.data.transactions %}
-    {% if tx.type == 'Deposit' %}
-      {% assign total_invested = total_invested | plus: tx.amount | times: -1 %}
-    {% elsif tx.type == 'Withdrawal' or tx.type == 'DIVIDEND' %}
-      {% assign total_income = total_income | plus: tx.amount %}
-    {% elsif tx.type == 'EXPENSE' %}
-      {% assign total_expenses = total_expenses | plus: tx.amount | times: -1 %}
-    {% endif %}
-  {% endfor %}
-
-  {% assign total_realized = 0 %}
-  {% for sale in site.data.sales %}
-    {% assign sale_gain = sale.sale_price | minus: sale.cost_basis %}
-    {% assign total_realized = total_realized | plus: sale_gain %}
-  {% endfor %}
-
   <div class="stat-card">
     <span class="stat-label">Total Invested</span>
-    <span class="stat-value">${{ total_invested | round }}</span>
+    <span class="stat-value" id="total-invested">-</span>
   </div>
 
   <div class="stat-card">
     <span class="stat-label">Total Income</span>
-    <span class="stat-value positive">${{ total_income | round }}</span>
+    <span class="stat-value positive" id="total-income">-</span>
   </div>
 
   <div class="stat-card">
     <span class="stat-label">Total Expenses</span>
-    <span class="stat-value negative">${{ total_expenses | round }}</span>
+    <span class="stat-value negative" id="total-expenses">-</span>
   </div>
 
   <div class="stat-card">
     <span class="stat-label">Total Realized Gains</span>
-    {% assign total_realized_num = total_realized | plus: 0 %}
-    <span class="stat-value {% if total_realized_num >= 0 %}positive{% else %}negative{% endif %}">
-      {% if total_realized_num >= 0 %}+{% endif %}${{ total_realized | round }}
-    </span>
+    <span class="stat-value" id="total-realized">-</span>
   </div>
 </div>
 
-<!-- Data for JavaScript -->
-<script type="application/json" id="holdings-data">
-[{% for holding in site.data.holdings %}
-  {
-    "id": "{{ holding.id }}",
-    "name": "{{ holding.name }}",
-    "category": "{{ holding.category }}",
-    "network": "{{ holding.network }}",
-    "status": "{{ holding.status }}",
-    "date_acquired": "{{ holding.date_acquired }}",
-    "cost_basis": {{ holding.cost_basis }},
-    "current_value": {{ holding.current_value }},
-    "last_checked_date": "{{ holding.last_checked_date }}",
-    "notes": "{{ holding.notes | escape }}"
-  }{% unless forloop.last %},{% endunless %}
-{% endfor %}]
-</script>
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+  const SHEETS = {
+    transactions: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQdW4--3KMPl6vSJGFY4BdzNxJgbZFMPnfGYSqS7AEox19YzmYQGo5wvKHupYOS1vTO2J6F6oksqzry/pub?gid=0&single=true&output=tsv',
+    sales: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQdW4--3KMPl6vSJGFY4BdzNxJgbZFMPnfGYSqS7AEox19YzmYQGo5wvKHupYOS1vTO2J6F6oksqzry/pub?gid=845485488&single=true&output=tsv'
+  };
 
-<script type="application/json" id="transactions-data">
-[{% for tx in site.data.transactions %}
-  {
-    "date": "{{ tx.date }}",
-    "type": "{{ tx.type }}",
-    "amount": {{ tx.amount }},
-    "notes": "{{ tx.notes | escape }}"
-  }{% unless forloop.last %},{% endunless %}
-{% endfor %}]
-</script>
+  function parseTSV(tsv) {
+    const lines = tsv.trim().split('\n');
+    if (lines.length < 2) return [];
+    const headers = lines[0].split('\t').map(h => h.trim().toLowerCase().replace(/ /g, '_'));
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split('\t');
+      const row = {};
+      headers.forEach((header, index) => {
+        let value = values[index] ? values[index].trim() : '';
+        if (value.startsWith('$') || value.startsWith('-$')) {
+          value = value.replace(/[$,]/g, '');
+        }
+        row[header] = value;
+      });
+      data.push(row);
+    }
+    return data;
+  }
 
-<script type="application/json" id="sales-data">
-[{% for sale in site.data.sales %}
-  {
-    "id": "{{ sale.id }}",
-    "date": "{{ sale.date }}",
-    "cost_basis": {{ sale.cost_basis | default: 0 }},
-    "sale_price": {{ sale.sale_price | default: 0 }},
-    "notes": "{{ sale.notes | escape }}"
-  }{% unless forloop.last %},{% endunless %}
-{% endfor %}]
+  function formatCurrency(value) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency', currency: 'USD',
+      minimumFractionDigits: 0, maximumFractionDigits: 0
+    }).format(value);
+  }
+
+  function parseDate(dateStr) {
+    if (!dateStr) return new Date();
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      return new Date(parts[2], parts[0] - 1, parts[1]);
+    }
+    if (dateStr.includes('-') && dateStr.split('-')[0].length <= 2) {
+      const parts = dateStr.split('-');
+      return new Date(parts[2], parts[0] - 1, parts[1]);
+    }
+    const parts = dateStr.split('-');
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+
+  try {
+    const [txResponse, salesResponse] = await Promise.all([
+      fetch(SHEETS.transactions),
+      fetch(SHEETS.sales)
+    ]);
+
+    const transactions = parseTSV(await txResponse.text());
+    const sales = parseTSV(await salesResponse.text());
+
+    // Build transactions table
+    const txContainer = document.getElementById('transactions-table-container');
+    const sortedTx = [...transactions].sort((a, b) => parseDate(b.date) - parseDate(a.date));
+
+    let totalInvested = 0, totalIncome = 0, totalExpenses = 0;
+
+    let txHtml = `
+      <div class="table-container" style="box-shadow: none;">
+        <table class="holdings-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Description</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    sortedTx.forEach(tx => {
+      const amount = parseFloat(tx.amount) || 0;
+      const type = tx.type || '';
+
+      if (type === 'Deposit') totalInvested += Math.abs(amount);
+      else if (type === 'Withdrawal' || type === 'DIVIDEND') totalIncome += amount;
+      else if (type === 'EXPENSE') totalExpenses += Math.abs(amount);
+
+      const amountClass = amount >= 0 ? 'positive' : 'negative';
+      const typeClass = type.toLowerCase();
+
+      txHtml += `
+        <tr>
+          <td>${tx.date || ''}</td>
+          <td><span class="transaction-type ${typeClass}">${type}</span></td>
+          <td>${tx.notes || ''}</td>
+          <td class="value-cell ${amountClass}">${amount >= 0 ? '+' : ''}${formatCurrency(amount)}</td>
+        </tr>
+      `;
+    });
+
+    txHtml += '</tbody></table></div>';
+    txContainer.innerHTML = txHtml;
+
+    // Build sales table
+    const salesContainer = document.getElementById('sales-table-container');
+    let totalRealized = 0;
+
+    if (sales.length > 0) {
+      const sortedSales = [...sales].sort((a, b) => parseDate(b.date) - parseDate(a.date));
+
+      let salesHtml = `
+        <div class="table-container" style="box-shadow: none; margin-top: 1rem;">
+          <table class="holdings-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>ID</th>
+                <th>Cost Basis</th>
+                <th>Sale Price</th>
+                <th>Realized Gain</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      sortedSales.forEach(sale => {
+        const costBasis = parseFloat(sale.cost_basis) || 0;
+        const salePrice = parseFloat(sale.sale_price) || 0;
+        const gain = salePrice - costBasis;
+        totalRealized += gain;
+
+        const gainClass = gain >= 0 ? 'positive' : 'negative';
+
+        salesHtml += `
+          <tr>
+            <td>${sale.date || ''}</td>
+            <td class="name-cell">${sale.id || ''}</td>
+            <td class="value-cell">${formatCurrency(costBasis)}</td>
+            <td class="value-cell">${formatCurrency(salePrice)}</td>
+            <td class="value-cell ${gainClass}">${gain >= 0 ? '+' : ''}${formatCurrency(gain)}</td>
+            <td>${sale.notes || ''}</td>
+          </tr>
+        `;
+      });
+
+      salesHtml += '</tbody></table></div>';
+      salesContainer.innerHTML = salesHtml;
+    }
+
+    // Update summary stats
+    document.getElementById('total-invested').textContent = formatCurrency(totalInvested);
+    document.getElementById('total-income').textContent = formatCurrency(totalIncome);
+    document.getElementById('total-expenses').textContent = formatCurrency(totalExpenses);
+
+    const totalRealizedEl = document.getElementById('total-realized');
+    totalRealizedEl.textContent = `${totalRealized >= 0 ? '+' : ''}${formatCurrency(totalRealized)}`;
+    totalRealizedEl.classList.add(totalRealized >= 0 ? 'positive' : 'negative');
+
+  } catch (e) {
+    console.error('Error loading performance data:', e);
+  }
+});
 </script>
