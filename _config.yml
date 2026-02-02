@@ -1,7 +1,7 @@
 # Site settings
 title: Crypto Cash Flow Portfolio
 description: Track your crypto cash flow positions, yields, and performance
-baseurl: "/Portfolio1" # subpath of your site, e.g. /portfolio
+baseurl: "/crypto-cash-flow-portfolio" # subpath of your site, e.g. /portfolio
 url: "https://futuregadgettemplates.github.io" # the base hostname & protocol for your site
 
 # Build settings
