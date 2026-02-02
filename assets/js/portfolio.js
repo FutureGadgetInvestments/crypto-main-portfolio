@@ -50,8 +50,17 @@
     const lines = tsv.trim().split('\n');
     if (lines.length < 2) return [];
 
-    // First line is headers
-    const headers = lines[0].split('\t').map(h => h.trim().toLowerCase().replace(/ /g, '_'));
+    // First line is headers - normalize them
+    const rawHeaders = lines[0].split('\t').map(h => h.trim().toLowerCase().replace(/ /g, '_'));
+
+    // Map common column name variations
+    const headerMap = {
+      'deposit/withdrawal': 'amount',
+      'transaction_type': 'type',
+      'date_aquired': 'date_acquired'
+    };
+
+    const headers = rawHeaders.map(h => headerMap[h] || h);
 
     // Parse data rows
     const data = [];

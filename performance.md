@@ -121,7 +121,13 @@ document.addEventListener('DOMContentLoaded', async function() {
   function parseTSV(tsv) {
     const lines = tsv.trim().split('\n');
     if (lines.length < 2) return [];
-    const headers = lines[0].split('\t').map(h => h.trim().toLowerCase().replace(/ /g, '_'));
+    const rawHeaders = lines[0].split('\t').map(h => h.trim().toLowerCase().replace(/ /g, '_'));
+    const headerMap = {
+      'deposit/withdrawal': 'amount',
+      'transaction_type': 'type',
+      'date_aquired': 'date_acquired'
+    };
+    const headers = rawHeaders.map(h => headerMap[h] || h);
     const data = [];
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split('\t');
