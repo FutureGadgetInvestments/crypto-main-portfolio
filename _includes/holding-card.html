@@ -1,10 +1,14 @@
 {% assign gain_loss = include.holding.current_value | minus: include.holding.cost_basis %}
 {% assign gain_loss_pct = gain_loss | times: 100.0 | divided_by: include.holding.cost_basis %}
 
-<div class="holding-card" data-category="{{ include.holding.category }}">
+<div class="holding-card" data-category="{{ include.holding.category }}" data-status="{{ include.holding.status }}">
   <div class="holding-header">
     <h3 class="holding-name">{{ include.holding.name }}</h3>
-    <span class="holding-category">{{ include.holding.category }}</span>
+    <div class="holding-badges">
+      <span class="holding-category">{{ include.holding.category }}</span>
+      <span class="holding-network">{{ include.holding.network }}</span>
+      <span class="holding-status holding-status-{{ include.holding.status }}">{{ include.holding.status }}</span>
+    </div>
   </div>
 
   <div class="holding-details">

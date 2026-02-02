@@ -1,6 +1,6 @@
 # Site settings
-title: Investment Portfolio
-description: Track your investments, calculate returns, and analyze performance
+title: Crypto Cash Flow Portfolio
+description: Track your crypto cash flow positions, yields, and performance
 baseurl: "/Portfolio1" # subpath of your site, e.g. /portfolio
 url: "https://futuregadgettemplates.github.io" # the base hostname & protocol for your site
 
@@ -16,6 +16,7 @@ exclude:
   - vendor
   - .claude
   - "*.md~"
+  - guide
 
 # Collections (if needed in future)
 collections_dir: collections

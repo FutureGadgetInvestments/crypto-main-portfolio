@@ -56,27 +56,27 @@ description: Portfolio analytics and IRR calculation
     <table class="holdings-table">
       <thead>
         <tr>
-          <th>Date Sold</th>
-          <th>Item</th>
-          <th>Qty</th>
-          <th>Proceeds</th>
+          <th>Date</th>
+          <th>ID</th>
           <th>Cost Basis</th>
+          <th>Sale Price</th>
           <th>Realized Gain</th>
+          <th>Notes</th>
         </tr>
       </thead>
       <tbody>
-        {% assign sorted_sales = site.data.sales | sort: "date_sold" | reverse %}
+        {% assign sorted_sales = site.data.sales | sort: "date" | reverse %}
         {% for sale in sorted_sales %}
-        {% assign sale_gain = sale.sale_proceeds | minus: sale.cost_basis_sold | plus: 0 %}
+        {% assign sale_gain = sale.sale_price | minus: sale.cost_basis | plus: 0 %}
         <tr>
-          <td>{{ sale.date_sold }}</td>
-          <td class="name-cell">{{ sale.holding_id }}</td>
-          <td>{{ sale.quantity_sold }}</td>
-          <td class="value-cell">${{ sale.sale_proceeds }}</td>
-          <td class="value-cell">${{ sale.cost_basis_sold }}</td>
+          <td>{{ sale.date }}</td>
+          <td class="name-cell">{{ sale.id }}</td>
+          <td class="value-cell">${{ sale.cost_basis }}</td>
+          <td class="value-cell">${{ sale.sale_price }}</td>
           <td class="value-cell {% if sale_gain >= 0 %}positive{% else %}negative{% endif %}">
             {% if sale_gain >= 0 %}+{% endif %}${{ sale_gain }}
           </td>
+          <td>{{ sale.notes }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -133,11 +133,11 @@ description: Portfolio analytics and IRR calculation
         <tr>
           <td>{{ tx.date }}</td>
           <td>
-            <span class="transaction-type {% if tx.type == 'BUY' %}buy{% elsif tx.type == 'SELL' or tx.type == 'DIVIDEND' %}sell{% else %}expense{% endif %}">
+            <span class="transaction-type {% if tx.type == 'Deposit' %}buy{% elsif tx.type == 'Withdrawal' or tx.type == 'DIVIDEND' %}sell{% else %}expense{% endif %}">
               {{ tx.type }}
             </span>
           </td>
-          <td>{{ tx.description }}</td>
+          <td>{{ tx.notes }}</td>
           <td class="value-cell {% if tx_amount >= 0 %}positive{% else %}negative{% endif %}">
             {% if tx_amount >= 0 %}+{% endif %}${{ tx.amount }}
           </td>
@@ -154,9 +154,9 @@ description: Portfolio analytics and IRR calculation
   {% assign total_income = 0 %}
   {% assign total_expenses = 0 %}
   {% for tx in site.data.transactions %}
-    {% if tx.type == 'BUY' %}
+    {% if tx.type == 'Deposit' %}
       {% assign total_invested = total_invested | plus: tx.amount | times: -1 %}
-    {% elsif tx.type == 'SELL' or tx.type == 'DIVIDEND' %}
+    {% elsif tx.type == 'Withdrawal' or tx.type == 'DIVIDEND' %}
       {% assign total_income = total_income | plus: tx.amount %}
     {% elsif tx.type == 'EXPENSE' %}
       {% assign total_expenses = total_expenses | plus: tx.amount | times: -1 %}
@@ -165,7 +165,7 @@ description: Portfolio analytics and IRR calculation
 
   {% assign total_realized = 0 %}
   {% for sale in site.data.sales %}
-    {% assign sale_gain = sale.sale_proceeds | minus: sale.cost_basis_sold %}
+    {% assign sale_gain = sale.sale_price | minus: sale.cost_basis %}
     {% assign total_realized = total_realized | plus: sale_gain %}
   {% endfor %}
 
@@ -200,10 +200,12 @@ description: Portfolio analytics and IRR calculation
     "id": "{{ holding.id }}",
     "name": "{{ holding.name }}",
     "category": "{{ holding.category }}",
+    "network": "{{ holding.network }}",
+    "status": "{{ holding.status }}",
     "date_acquired": "{{ holding.date_acquired }}",
     "cost_basis": {{ holding.cost_basis }},
     "current_value": {{ holding.current_value }},
-    "quantity": {{ holding.quantity }},
+    "last_checked_date": "{{ holding.last_checked_date }}",
     "notes": "{{ holding.notes | escape }}"
   }{% unless forloop.last %},{% endunless %}
 {% endfor %}]
@@ -212,11 +214,10 @@ description: Portfolio analytics and IRR calculation
 <script type="application/json" id="transactions-data">
 [{% for tx in site.data.transactions %}
   {
-    "id": "{{ tx.id }}",
     "date": "{{ tx.date }}",
     "type": "{{ tx.type }}",
     "amount": {{ tx.amount }},
-    "description": "{{ tx.description | escape }}"
+    "notes": "{{ tx.notes | escape }}"
   }{% unless forloop.last %},{% endunless %}
 {% endfor %}]
 </script>
@@ -225,11 +226,9 @@ description: Portfolio analytics and IRR calculation
 [{% for sale in site.data.sales %}
   {
     "id": "{{ sale.id }}",
-    "holding_id": "{{ sale.holding_id }}",
-    "date_sold": "{{ sale.date_sold }}",
-    "quantity_sold": {{ sale.quantity_sold }},
-    "sale_proceeds": {{ sale.sale_proceeds }},
-    "cost_basis_sold": {{ sale.cost_basis_sold }},
+    "date": "{{ sale.date }}",
+    "cost_basis": {{ sale.cost_basis | default: 0 }},
+    "sale_price": {{ sale.sale_price | default: 0 }},
     "notes": "{{ sale.notes | escape }}"
   }{% unless forloop.last %},{% endunless %}
 {% endfor %}]

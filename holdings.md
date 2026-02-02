@@ -6,7 +6,7 @@ description: Complete list of portfolio holdings
 
 <header class="page-header">
   <h1 class="page-title">Holdings</h1>
-  <p class="page-description">All portfolio items with current values and performance</p>
+  <p class="page-description">All crypto cash flow positions with current values and performance</p>
 </header>
 
 <div class="holdings-controls">
@@ -27,6 +27,8 @@ description: Complete list of portfolio holdings
       <tr>
         <th data-sort="name">Name</th>
         <th data-sort="category">Category</th>
+        <th data-sort="network">Network</th>
+        <th data-sort="status">Status</th>
         <th data-sort="cost">Cost Basis</th>
         <th data-sort="value">Current Value</th>
         <th data-sort="gain">Gain/Loss</th>
@@ -40,6 +42,8 @@ description: Complete list of portfolio holdings
       {% assign gain_loss_pct = gain_loss | times: 100.0 | divided_by: holding.cost_basis %}
       <tr data-category="{{ holding.category }}"
           data-name="{{ holding.name }}"
+          data-network="{{ holding.network }}"
+          data-status="{{ holding.status }}"
           data-cost="{{ holding.cost_basis }}"
           data-value="{{ holding.current_value }}"
           data-gain="{{ gain_loss }}"
@@ -48,6 +52,8 @@ description: Complete list of portfolio holdings
           data-notes="{{ holding.notes }}">
         <td class="name-cell">{{ holding.name }}</td>
         <td><span class="category-badge">{{ holding.category }}</span></td>
+        <td><span class="network-badge">{{ holding.network }}</span></td>
+        <td><span class="status-badge status-{{ holding.status }}">{{ holding.status }}</span></td>
         <td class="value-cell">${{ holding.cost_basis | round }}</td>
         <td class="value-cell">${{ holding.current_value | round }}</td>
         <td class="value-cell {% if gain_loss >= 0 %}positive{% else %}negative{% endif %}">
@@ -105,10 +111,12 @@ description: Complete list of portfolio holdings
     "id": "{{ holding.id }}",
     "name": "{{ holding.name }}",
     "category": "{{ holding.category }}",
+    "network": "{{ holding.network }}",
+    "status": "{{ holding.status }}",
     "date_acquired": "{{ holding.date_acquired }}",
     "cost_basis": {{ holding.cost_basis }},
     "current_value": {{ holding.current_value }},
-    "quantity": {{ holding.quantity }},
+    "last_checked_date": "{{ holding.last_checked_date }}",
     "notes": "{{ holding.notes | escape }}"
   }{% unless forloop.last %},{% endunless %}
 {% endfor %}]

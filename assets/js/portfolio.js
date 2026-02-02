@@ -130,8 +130,18 @@
 
   /**
    * Parse date string to Date object
+   * Supports both YYYY-MM-DD and MM/DD/YYYY formats
    */
   function parseDate(dateStr) {
+    if (!dateStr) return new Date();
+
+    // Check if it's MM/DD/YYYY format
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      return new Date(parts[2], parts[0] - 1, parts[1]);
+    }
+
+    // Otherwise assume YYYY-MM-DD format
     const parts = dateStr.split('-');
     return new Date(parts[0], parts[1] - 1, parts[2]);
   }
@@ -338,8 +348,11 @@
       html += '</ul>';
 
       container.innerHTML = html;
+      container.classList.remove('loading');
     } catch (e) {
       console.error('Error building category breakdown:', e);
+      container.classList.remove('loading');
+      container.innerHTML = '<p class="no-data">Error loading data</p>';
     }
   }
 
@@ -380,6 +393,7 @@
             <span class="mover-change positive">+${(h.gainLossPct * 100).toFixed(1)}%</span>
           </div>
         `).join('');
+        gainersContainer.classList.remove('loading');
       }
 
       // Top losers (bottom 3, reversed)
@@ -398,9 +412,12 @@
             </div>
           `;
         }).join('');
+        losersContainer.classList.remove('loading');
       }
     } catch (e) {
       console.error('Error building top movers:', e);
+      if (gainersContainer) gainersContainer.classList.remove('loading');
+      if (losersContainer) losersContainer.classList.remove('loading');
     }
   }
 
@@ -432,7 +449,7 @@
           <div class="transaction-item">
             <div class="transaction-info">
               <span class="transaction-type ${typeClass}">${t.type}</span>
-              <span class="transaction-desc">${t.description}</span>
+              <span class="transaction-desc">${t.notes || ''}</span>
               <span class="transaction-date">${t.date}</span>
             </div>
             <span class="transaction-amount ${amountClass}">
@@ -444,8 +461,10 @@
       html += '</div>';
 
       container.innerHTML = html;
+      container.classList.remove('loading');
     } catch (e) {
       console.error('Error building transaction timeline:', e);
+      container.classList.remove('loading');
     }
   }
 
@@ -478,8 +497,8 @@
       let totalCostBasisSold = 0;
 
       sales.forEach(s => {
-        const proceeds = parseFloat(s.sale_proceeds);
-        const costBasis = parseFloat(s.cost_basis_sold);
+        const proceeds = parseFloat(s.sale_price) || 0;
+        const costBasis = parseFloat(s.cost_basis) || 0;
         totalSaleProceeds += proceeds;
         totalCostBasisSold += costBasis;
         totalRealizedGain += proceeds - costBasis;
@@ -540,16 +559,17 @@
 
       if (sales.length === 0) {
         container.innerHTML = '<p class="no-data">No sales recorded yet.</p>';
+        container.classList.remove('loading');
         return;
       }
 
       // Sort by date descending
-      const sorted = [...sales].sort((a, b) => parseDate(b.date_sold) - parseDate(a.date_sold));
+      const sorted = [...sales].sort((a, b) => parseDate(b.date) - parseDate(a.date));
 
       let html = '<div class="sales-list">';
       sorted.forEach(s => {
-        const proceeds = parseFloat(s.sale_proceeds);
-        const costBasis = parseFloat(s.cost_basis_sold);
+        const proceeds = parseFloat(s.sale_price) || 0;
+        const costBasis = parseFloat(s.cost_basis) || 0;
         const gain = proceeds - costBasis;
         const gainPct = costBasis > 0 ? (gain / costBasis) : 0;
         const gainClass = gain >= 0 ? 'positive' : 'negative';
@@ -557,13 +577,13 @@
         html += `
           <div class="sale-item">
             <div class="sale-info">
-              <span class="sale-holding">${s.holding_id}</span>
-              <span class="sale-date">${s.date_sold}</span>
+              <span class="sale-holding">${s.id}</span>
+              <span class="sale-date">${s.date}</span>
               <span class="sale-notes">${s.notes || ''}</span>
             </div>
             <div class="sale-numbers">
               <div class="sale-detail">
-                <span class="detail-label">Proceeds</span>
+                <span class="detail-label">Sale Price</span>
                 <span class="detail-value">${formatCurrency(proceeds)}</span>
               </div>
               <div class="sale-detail">
@@ -581,8 +601,10 @@
       html += '</div>';
 
       container.innerHTML = html;
+      container.classList.remove('loading');
     } catch (e) {
       console.error('Error building realized gains list:', e);
+      container.classList.remove('loading');
     }
   }
 

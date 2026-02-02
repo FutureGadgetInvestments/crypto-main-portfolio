@@ -67,10 +67,12 @@ title: Dashboard
     "id": "{{ holding.id }}",
     "name": "{{ holding.name }}",
     "category": "{{ holding.category }}",
+    "network": "{{ holding.network }}",
+    "status": "{{ holding.status }}",
     "date_acquired": "{{ holding.date_acquired }}",
     "cost_basis": {{ holding.cost_basis }},
     "current_value": {{ holding.current_value }},
-    "quantity": {{ holding.quantity }},
+    "last_checked_date": "{{ holding.last_checked_date }}",
     "notes": "{{ holding.notes | escape }}"
   }{% unless forloop.last %},{% endunless %}
 {% endfor %}]
@@ -79,11 +81,10 @@ title: Dashboard
 <script type="application/json" id="transactions-data">
 [{% for tx in site.data.transactions %}
   {
-    "id": "{{ tx.id }}",
     "date": "{{ tx.date }}",
     "type": "{{ tx.type }}",
     "amount": {{ tx.amount }},
-    "description": "{{ tx.description | escape }}"
+    "notes": "{{ tx.notes | escape }}"
   }{% unless forloop.last %},{% endunless %}
 {% endfor %}]
 </script>
@@ -92,11 +93,9 @@ title: Dashboard
 [{% for sale in site.data.sales %}
   {
     "id": "{{ sale.id }}",
-    "holding_id": "{{ sale.holding_id }}",
-    "date_sold": "{{ sale.date_sold }}",
-    "quantity_sold": {{ sale.quantity_sold }},
-    "sale_proceeds": {{ sale.sale_proceeds }},
-    "cost_basis_sold": {{ sale.cost_basis_sold }},
+    "date": "{{ sale.date }}",
+    "cost_basis": {{ sale.cost_basis | default: 0 }},
+    "sale_price": {{ sale.sale_price | default: 0 }},
     "notes": "{{ sale.notes | escape }}"
   }{% unless forloop.last %},{% endunless %}
 {% endfor %}]

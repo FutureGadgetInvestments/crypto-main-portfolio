@@ -1,0 +1,4 @@
+id	name	category	network	date_acquired	cost_basis	current_value	last_checked_date	status	notes
+yousd-base	yoUSD	PENDLE	Base	11/17/2025	2500	2578	2-2-2026	open	Expires 3-25-2026
+susdai-arbitrum	sUSDai	PENDLE	Arbitrum	11/17/2025	2500	2613	2-2-2026	open	Expires 2-18-2026
+reusde-ethereum	reUSDe	PENDLE	Ethereum	1/26/2026	2500	2506	2-2-2026	open	Expires 6-24-2026
